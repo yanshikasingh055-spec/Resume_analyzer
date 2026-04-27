@@ -1,341 +1,343 @@
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from extractor import SEMANTIC_SYNONYMS
 
-_CANONICAL_TO_SYNONYMS: dict = {}
-for phrase, canonical in SEMANTIC_SYNONYMS.items():
-    _CANONICAL_TO_SYNONYMS.setdefault(canonical, []).append(phrase)
-
-# ── Role profiles for Role Fit detection ─────────────────────────────────────
-ROLE_PROFILES = {
-    "Machine Learning Engineer": {
-        "keywords": {"machine learning", "deep learning", "python", "tensorflow", "pytorch",
-                     "scikit-learn", "computer vision", "natural language processing",
-                     "neural network", "model deployment", "feature engineering"},
-        "weight": 1.0,
-    },
-    "Data Scientist": {
-        "keywords": {"data science", "data analysis", "python", "machine learning", "pandas",
-                     "numpy", "matplotlib", "scikit-learn", "regression", "classification",
-                     "data visualization", "sql"},
-        "weight": 1.0,
-    },
-    "Full Stack Developer": {
-        "keywords": {"react", "node", "javascript", "html", "css", "rest api", "flask",
-                     "django", "database", "git", "python"},
-        "weight": 1.0,
-    },
-    "Backend Developer": {
-        "keywords": {"python", "flask", "django", "fastapi", "rest api", "database",
-                     "mysql", "postgresql", "mongodb", "git", "docker", "aws"},
-        "weight": 1.0,
-    },
-    "Frontend Developer": {
-        "keywords": {"react", "javascript", "typescript", "html", "css", "tailwind",
-                     "responsive design", "accessibility", "angular", "vue"},
-        "weight": 1.0,
-    },
-    "DevOps Engineer": {
-        "keywords": {"docker", "kubernetes", "ci/cd", "aws", "azure", "gcp", "linux",
-                     "git", "jenkins", "terraform", "monitoring", "bash"},
-        "weight": 1.0,
-    },
-    "Data Engineer": {
-        "keywords": {"python", "sql", "etl", "data pipeline", "big data", "spark",
-                     "airflow", "aws", "postgresql", "mongodb"},
-        "weight": 1.0,
-    },
-    "AI/Computer Vision Engineer": {
-        "keywords": {"computer vision", "deep learning", "opencv", "yolo", "tensorflow",
-                     "pytorch", "object detection", "cnn", "image classification", "python"},
-        "weight": 1.0,
-    },
+SKILLS_KEYWORDS = {
+    "python", "java", "javascript", "typescript", "c++", "c#", "go", "rust",
+    "sql", "nosql", "r", "scala", "kotlin", "swift", "machine learning",
+    "deep learning", "nlp", "computer vision", "tensorflow", "pytorch",
+    "scikit-learn", "pandas", "numpy", "matplotlib", "opencv", "keras",
+    "flask", "django", "fastapi", "react", "angular", "vue", "node",
+    "express", "spring", "aws", "azure", "gcp", "docker", "kubernetes",
+    "ci/cd", "git", "linux", "rest", "graphql", "mongodb", "postgresql",
+    "mysql", "redis", "spark", "hadoop", "airflow", "tableau", "power bi",
+    "data analysis", "feature engineering", "version control", "statistics",
+    "natural language processing", "opencv", "yolo", "cnn", "regression",
+    "classification", "supervised learning", "model evaluation"
 }
 
-# Skill category groups — for section scoring
-SKILL_GROUPS = {
-    "ml_ai": {"machine learning", "deep learning", "computer vision", "natural language processing",
-               "neural network", "cnn", "rnn", "lstm", "transformer", "bert", "gpt",
-               "reinforcement learning", "transfer learning", "generative ai", "llm"},
-    "frameworks": {"tensorflow", "pytorch", "keras", "scikit-learn", "xgboost", "opencv",
-                   "huggingface", "yolo", "detectron"},
-    "languages": {"python", "javascript", "typescript", "java", "c++", "sql", "r", "scala"},
-    "web": {"react", "flask", "django", "node", "express", "fastapi", "angular", "vue",
-            "rest api", "graphql", "tailwind", "bootstrap"},
-    "data": {"pandas", "numpy", "matplotlib", "seaborn", "data analysis", "data science",
-             "data visualization", "etl", "big data"},
-    "cloud_devops": {"aws", "azure", "gcp", "docker", "kubernetes", "ci/cd", "git",
-                     "github", "linux", "jenkins"},
-    "databases": {"mysql", "postgresql", "mongodb", "redis", "sqlite", "database",
-                  "firebase", "elasticsearch"},
+TOOLS_KEYWORDS = {
+    "docker", "kubernetes", "git", "github", "gitlab", "jenkins", "jira",
+    "confluence", "vscode", "pycharm", "jupyter", "postman", "figma",
+    "tableau", "power bi", "excel", "aws", "azure", "gcp", "heroku",
+    "vercel", "netlify", "terraform", "ansible", "ci/cd", "linux",
+    "bash", "airflow", "mlflow", "weights & biases", "wandb", "redis",
+    "elasticsearch", "kafka", "rabbitmq", "nginx", "yolo", "opencv",
+    "tensorflow", "pytorch", "scikit-learn", "mysql", "mongodb"
 }
 
-def split_jd_keywords(jd_keywords):
-    return {
-        "skills": jd_keywords & (
-            SKILL_GROUPS["ml_ai"] |
-            SKILL_GROUPS["data"] |
-            SKILL_GROUPS["web"]
-        ),
-        "tools": jd_keywords & (
-            SKILL_GROUPS["frameworks"] |
-            SKILL_GROUPS["languages"] |
-            SKILL_GROUPS["cloud_devops"]
-        ),
-        "experience": jd_keywords,   # keep full
-        "projects": jd_keywords      # keep full
-    }
+# ── FIX 1: Expanded noise list to remove junk words that leak into denominator ──
+JD_NOISE_WORDS = {
+    # Job posting boilerplate
+    "description", "eligibility", "familiarity", "exposure", "developer",
+    "developers", "developing", "engineer", "engineers", "entry-level",
+    "fresher", "freshers", "field", "growing", "passionate", "ideal",
+    "candidate", "candidates", "responsible", "responsibilities",
+    "requirement", "requirements", "qualifications", "preferred",
+    "required", "bonus", "good", "have", "has", "join", "team", "role",
+    "company", "collaborate", "applications", "building", "deploy",
+    "deployment", "optimize", "scalability", "bangalore", "remote",
+    "india", "location", "cloud", "database", "databases", "control",
+    "looking", "seeking", "profile", "portfolio", "track", "record",
+    "contribute", "contribution", "day", "one", "real", "world", "year",
+    "years", "hands", "growing", "why", "fit", "great", "plus",
+    "understanding", "awareness", "grasp",
+    "proficiency", "proficient", "expert", "expertise", "senior", "junior",
+    "lead", "manage", "coordinate", "implement", "maintain",
+    # Generic English
+    "and", "or", "the", "a", "an", "in", "of", "for", "to", "with",
+    "is", "are", "be", "on", "at", "by", "as", "we", "you", "your",
+    "our", "will", "using", "use", "such", "including", "ability",
+    "skills", "skill", "this", "that", "from", "not", "but", "also",
+    "work", "build", "design", "create", "write", "new", "key", "main",
+    "used", "well", "its", "how", "what", "who", "should", "must", "can",
+    "based", "level", "strong", "basic", "working", "like", "into",
+    "their", "them", "they", "were", "been", "being", "about", "which",
+    "when", "where", "while", "with", "within", "without", "through",
+    "across", "between", "among", "above", "below", "over", "under",
+    "more", "less", "most", "least", "very", "too", "just", "only",
+    "both", "each", "every", "any", "all", "few", "some", "other",
+    "these", "those", "same", "different", "various", "multiple",
+    "frameworks", "frontend", "graduate",
+    "hands-on", "integration", "intermediate", "final",
+    "full-stack", "full stack", "passion",
+    "stack", "tech", "technology", "technologies",
+    "solution", "solutions", "service", "services",
+    "performance", "model", "models", "application", "system", "systems",
+    # ── NEW: words confirmed to leak into denominator without being skills ──
+    "community", "equivalent", "hybrid", "leadership", "motivated",
+    "nice", "tasks", "tools", "education", "certifications",
+    "programming", "development", "develop", "science", "project",
+    "learning", "generative", "prediction", "evaluation", "healthcare",
+    "restful", "hackathon", "hands", "assistive", "computer",
+    # Hyphenated noise variants
+    "cnn-based", "full-stack", "hands-on",
+    # Slash-separated combos that aren't real terms
+    "ml/ai", "0-1",
+    # ── Newly confirmed junk terms that leak into denominator ──
+    "fundamentals", "hiring", "modules", "evaluate", "train", "training",
+    "integrate", "queries", "strong", "backend", "fresher",
+    "responsibilities", "frameworks", "database", "based",
+    "title", "write", "optimized", "good", "years",
+}
+
+# Explicit tech terms that MUST be checked — always included regardless
+MUST_MATCH_TERMS = {
+    "python", "flask", "fastapi", "django", "react", "mysql", "sql",
+    "tensorflow", "opencv", "yolo", "cnn", "machine_learning",
+    "deep_learning", "computer_vision", "rest_api", "github", "aws",
+    "regression", "classification", "supervised", "numpy",
+    "pandas", "scikit-learn", "pytorch", "git", "javascript", "node",
+    "docker", "kubernetes", "nlp", "data_analysis", "version_control",
+    "object_detection"
+}
 
 
-def _semantic_match(resume_kws: set, jd_kws: set) -> set:
-    resume_canonicals = set(resume_kws)
-    for kw in resume_kws:
-        if kw in SEMANTIC_SYNONYMS:
-            resume_canonicals.add(SEMANTIC_SYNONYMS[kw])
-        if kw in _CANONICAL_TO_SYNONYMS:
-            resume_canonicals.update(_CANONICAL_TO_SYNONYMS[kw])
-
-    semantically_matched = set()
-    for jd_kw in jd_kws:
-        if jd_kw in resume_canonicals:
-            semantically_matched.add(jd_kw)
-        elif jd_kw in _CANONICAL_TO_SYNONYMS:
-            if any(syn in resume_kws or syn in resume_canonicals
-                   for syn in _CANONICAL_TO_SYNONYMS[jd_kw]):
-                semantically_matched.add(jd_kw)
-        elif jd_kw in SEMANTIC_SYNONYMS:
-            if SEMANTIC_SYNONYMS[jd_kw] in resume_kws:
-                semantically_matched.add(jd_kw)
-    return semantically_matched
-
-
-def get_matched_keywords(resume_keywords, jd_keywords):
-    exact = resume_keywords & jd_keywords
-    semantic = _semantic_match(resume_keywords, jd_keywords)
-    return exact | semantic
-
-
-def get_missing_keywords(resume_keywords, jd_keywords):
-    matched = get_matched_keywords(resume_keywords, jd_keywords)
-    missing = jd_keywords - matched
-    return sorted(list(missing), key=lambda x: (-len(x.split()), x))
+def normalize(text: str) -> str:
+    """Lowercase and normalize common variants."""
+    text = text.lower()
+    # Strip "-based" suffix FIRST so "opencv-based" does not become "computer_vision-based"
+    text = re.sub(r'(\w+)-based\b', r'\1 based', text)
+    text = re.sub(r'\bcnns?\b', 'cnn', text)
+    text = re.sub(r'\bapis?\b', 'api', text)
+    text = re.sub(r'\brest\s+apis?\b', 'rest_api', text)
+    text = re.sub(r'\byolov\d+\b', 'yolo', text)
+    text = re.sub(r'\breact\.?js\b', 'react', text)
+    text = re.sub(r'\bnode\.?js\b', 'node', text)
+    text = re.sub(r'\bgithub\b', 'git github', text)
+    text = re.sub(r'\bfull[-\s]stack\b', 'fullstack', text)
+    text = re.sub(r'\bhands[-\s]on\b', 'handson', text)
+    text = re.sub(r'computer\s+vision', 'computer_vision', text)
+    text = re.sub(r'machine\s+learning', 'machine_learning', text)
+    text = re.sub(r'deep\s+learning', 'deep_learning', text)
+    text = re.sub(r'natural\s+language\s+processing', 'nlp', text)
+    text = re.sub(r'version\s+control', 'version_control', text)
+    text = re.sub(r'rest\s+api', 'rest_api', text)
+    text = re.sub(r'restful\s+apis?\b', 'rest_api', text)
+    text = re.sub(r'data\s+analysis', 'data_analysis', text)
+    text = re.sub(r'object\s+detection', 'object_detection', text)
+    text = re.sub(r'\bopencv\b', 'opencv computer_vision', text)
+    text = re.sub(r'\bpipelines?\b', 'pipelines', text)
+    text = re.sub(r'[^\w\s/\-\+#]', ' ', text)
+    return text
 
 
-def compute_weighted_score(resume_sections: dict, jd_sections: dict, resume_text: str, job_description: str):
-    """
-    Section-weighted scoring:
-      Skills section     → 40%
-      Projects section   → 30%
-      Tools/frameworks   → 20%  (from all sections, filtered by SKILL_GROUPS frameworks)
-      Experience section → 10%
-    """
-    def section_match_rate(section_kws, jd_kws):
-      if not section_kws or not jd_kws:
+def extract_section(text: str, section_names: list) -> str:
+    text_lower = text.lower()
+    best_start = -1
+    for name in section_names:
+        idx = text_lower.find(name)
+        if idx != -1 and (best_start == -1 or idx < best_start):
+            best_start = idx
+    if best_start == -1:
+        return ""
+    section_headers = [
+        "education", "experience", "work experience", "projects", "skills",
+        "certifications", "publications", "awards", "summary", "objective",
+        "interests", "languages", "references", "achievements", "extra"
+    ]
+    end = len(text)
+    for header in section_headers:
+        idx = text_lower.find(header, best_start + 10)
+        if idx != -1 and idx < end:
+            found_name = any(name in text_lower[best_start:best_start+30] for name in section_names)
+            if found_name or idx > best_start + 50:
+                end = idx
+    return text[best_start:end]
+
+
+def tfidf_similarity(text1: str, text2: str) -> float:
+    if not text1.strip() or not text2.strip():
+        return 0.0
+    try:
+        vec = TfidfVectorizer(ngram_range=(1, 2), max_features=5000, stop_words="english")
+        tfidf = vec.fit_transform([text1, text2])
+        score = cosine_similarity(tfidf[0:1], tfidf[1:2])[0][0]
+        return round(float(score) * 100, 1)
+    except Exception:
         return 0.0
 
-      matched = get_matched_keywords(section_kws, jd_kws)
 
-      precision = len(matched) / len(section_kws)
-      recall = len(matched) / len(jd_kws)
+def keyword_overlap_score(resume_text: str, jd_text: str, keyword_set: set) -> float:
+    resume_n = normalize(resume_text)
+    jd_n = normalize(jd_text)
+    jd_hits = {kw for kw in keyword_set if kw in jd_n}
+    if not jd_hits:
+        return 100.0
+    resume_hits = {kw for kw in jd_hits if kw in resume_n}
+    return round(len(resume_hits) / len(jd_hits) * 100, 1)
 
-      if precision + recall == 0:
+
+def direct_match_score(resume_text: str, jd_text: str, label: str = "") -> float:
+    """
+    Match only real tech/skill terms from JD against resume.
+    Excludes all noise/boilerplate words.
+    """
+    jd_n = normalize(jd_text)
+    resume_n = normalize(resume_text)
+
+    # Step 1: get all words from JD, remove noise
+    words = jd_n.split()
+    candidates = {w for w in words if len(w) >= 3 and w not in JD_NOISE_WORDS}
+
+    # Step 2: always include must-match tech terms that appear in JD
+    for term in MUST_MATCH_TERMS:
+        if term in jd_n:
+            candidates.add(term)
+
+    # ── FIX 3: Remove words already in noise that sneak in via MUST_MATCH ──
+    candidates = {w for w in candidates if w not in JD_NOISE_WORDS}
+
+    # Step 3: remove words that are clearly not tech terms
+    known_short_tech = {"sql", "aws", "gcp", "git", "api", "cnn", "nlp",
+                        "css", "vue", "r", "go", "c++", "c#", "html"}
+    final_terms = set()
+    for w in candidates:
+        if w in known_short_tech or w in MUST_MATCH_TERMS:
+            final_terms.add(w)
+        elif len(w) >= 4:
+            final_terms.add(w)
+
+    if not final_terms:
         return 0.0
 
-      return (2 * precision * recall) / (precision + recall)
+    matched = {kw for kw in final_terms if kw in resume_n}
+    score = len(matched) / len(final_terms) * 100
 
-    skills_kws = resume_sections.get("skills", set())
-    projects_kws = resume_sections.get("projects", set())
-    experience_kws = resume_sections.get("experience", set())
-    # 🔥 Reduce overlap between sections
-    projects_kws = projects_kws - skills_kws
-    experience_kws = experience_kws - skills_kws - projects_kws
+    print(f"[{label}] Terms: {len(final_terms)}, Matched: {len(matched)}, Score: {score:.1f}%")
+    print(f"[{label}] Unmatched: {sorted(final_terms - matched)[:10]}")
 
-    # Tools = framework/language keywords found anywhere in resume
-    all_resume_kws = set()
-    for kws in resume_sections.values():
-        all_resume_kws |= kws
+    return round(score, 1)
 
-        jd_split = split_jd_keywords(set().union(*jd_sections.values()))
 
-        jd_skills = jd_split["skills"]
-        jd_projects = jd_split["projects"]
-        jd_tools = jd_split["tools"]
-        jd_experience = jd_split["experience"]
-        tools_kws = (
-    skills_kws | projects_kws | experience_kws
-) & (
-    SKILL_GROUPS["frameworks"] |
-    SKILL_GROUPS["languages"] |
-    SKILL_GROUPS["cloud_devops"]
-)
+def compute_scores(resume_text: str, jd_text: str) -> dict:
+    """
+    KEY DESIGN PRINCIPLE:
+    - direct_match_score ALWAYS uses full resume text — a skill listed in the
+      Skills section shouldn't penalize the Projects score just because it
+      wasn't repeated inside the project bullet points.
+    - Section text is ONLY used for TF-IDF (relevance/context signal).
+    - keyword_overlap always uses full resume.
+    This ensures: 0 missing keywords → score reflects that reality.
+    """
 
-    skills_score = section_match_rate(skills_kws, jd_skills)
-    projects_score = section_match_rate(projects_kws, jd_projects)
-    tools_score = section_match_rate(tools_kws, jd_tools)
-    experience_score = section_match_rate(experience_kws, jd_experience)
+    # Extract sections for TF-IDF context only
+    skills_section   = extract_section(resume_text, ["skills", "technical skills", "core competencies"])
+    projects_section = extract_section(resume_text, ["projects", "personal projects", "academic projects"])
+    exp_section      = extract_section(resume_text, [
+        "experience", "work experience", "employment",
+        "internship", "professional experience"
+    ])
 
-    # Fallback: if sections are empty, use full resume
-    if not skills_kws and not projects_kws:
-        skills_score = section_match_rate(all_resume_kws, jd_skills)
-        projects_score = skills_score
-        tools_score = skills_score
-        experience_score = skills_score
+    # ── Skills Score (40%) ──────────────────────────────────────────────────
+    skills_kw    = keyword_overlap_score(resume_text, jd_text, SKILLS_KEYWORDS)
+    skills_dir   = direct_match_score(resume_text, jd_text, "SKILLS")        # full resume
+    skills_tfidf = tfidf_similarity(
+        skills_section if len(skills_section) > 50 else resume_text, jd_text
+    )
+    skills_score = round(0.45 * skills_kw + 0.35 * skills_dir + 0.20 * skills_tfidf, 1)
 
-    keyword_score = (
-        skills_score * 0.40 +
-        projects_score * 0.30 +
-        tools_score * 0.20 +
-        experience_score * 0.10
+    # ── Projects Score (30%) ────────────────────────────────────────────────
+    proj_kw    = keyword_overlap_score(resume_text, jd_text, SKILLS_KEYWORDS) # full resume
+    proj_dir   = direct_match_score(resume_text, jd_text, "PROJECTS")         # full resume
+    proj_tfidf = tfidf_similarity(
+        projects_section if len(projects_section) > 50 else resume_text, jd_text
+    )
+    projects_score = round(0.45 * proj_kw + 0.35 * proj_dir + 0.20 * proj_tfidf, 1)
+
+    # ── Tools Score (20%) ───────────────────────────────────────────────────
+    tools_kw    = keyword_overlap_score(resume_text, jd_text, TOOLS_KEYWORDS) # full resume
+    tools_dir   = direct_match_score(resume_text, jd_text, "TOOLS")           # full resume
+    tools_tfidf = tfidf_similarity(resume_text, jd_text)
+    tools_score = round(0.50 * tools_kw + 0.30 * tools_dir + 0.20 * tools_tfidf, 1)
+
+    # ── Experience Score (10%) ──────────────────────────────────────────────
+    # For freshers: projects section IS experience — use it for TF-IDF context
+    exp_context = (
+        exp_section if len(exp_section) > 50
+        else projects_section if len(projects_section) > 50
+        else resume_text
+    )
+    exp_dir   = direct_match_score(resume_text, jd_text, "EXPERIENCE")       # full resume
+    exp_tfidf = tfidf_similarity(exp_context, jd_text)
+    experience_score = round(0.55 * exp_dir + 0.45 * exp_tfidf, 1)
+
+    # ── Overall ─────────────────────────────────────────────────────────────
+    overall = round(
+        0.40 * skills_score   +
+        0.30 * projects_score +
+        0.20 * tools_score    +
+        0.10 * experience_score,
+        1
     )
 
-    # TF-IDF secondary signal (20% of final score)
-    try:
-        vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2),
-                                     max_features=8000, sublinear_tf=True)
-        tfidf_matrix = vectorizer.fit_transform([resume_text, job_description])
-        tfidf_score = float(cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0])
-    except Exception:
-        tfidf_score = 0.0
+    print(f"\n=== FINAL SCORES ===")
+    print(f"Skills: {skills_score} | Projects: {projects_score} | Tools: {tools_score} | Experience: {experience_score}")
+    print(f"Overall: {overall}\n")
 
-    combined = (keyword_score * 0.80) + (tfidf_score * 0.20)
-    final = round(min(combined * 100, 100.0), 1)
-
-    breakdown = {
-        "skills": round(skills_score * 100, 1),
-        "projects": round(projects_score * 100, 1),
-        "tools": round(tools_score * 100, 1),
-        "experience": round(experience_score * 100, 1),
+    return {
+        "match_score": overall,
+        "score_breakdown": {
+            "skills":     skills_score,
+            "projects":   projects_score,
+            "tools":      tools_score,
+            "experience": experience_score
+        }
     }
 
-    return final, breakdown
+
+def compute_weighted_score(resume_sections: dict, jd_keywords: set,
+                            resume_text: str, jd_text: str):
+    result = compute_scores(resume_text, jd_text)
+    return result["match_score"], result["score_breakdown"]
+
+
+def get_matched_keywords(resume_keywords: set, jd_keywords: set) -> set:
+    return set(resume_keywords) & set(jd_keywords)
+
+
+def get_missing_keywords(resume_keywords: set, jd_keywords: set) -> list:
+    return sorted(list(set(jd_keywords) - set(resume_keywords)))
 
 
 def compute_role_fit(resume_keywords: set) -> dict:
-    """
-    Compare resume keywords against role profiles.
-    Returns role scores, best fit roles, and the detected role category.
-    """
-    scores = {}
-    for role, profile in ROLE_PROFILES.items():
-        profile_kws = profile["keywords"]
-        matched = get_matched_keywords(resume_keywords, profile_kws)
-        scores[role] = round(len(matched) / len(profile_kws) * 100, 1)
-
-    sorted_roles = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    best_roles = [r for r, s in sorted_roles if s >= 50][:3]
-    if not best_roles:
-        best_roles = [sorted_roles[0][0]] if sorted_roles else []
-
+    ROLE_PROFILES = {
+        "ML Engineer": {"python", "tensorflow", "pytorch", "scikit-learn", "machine learning", "deep learning"},
+        "Data Scientist": {"python", "pandas", "numpy", "statistics", "machine learning", "sql", "data analysis"},
+        "Backend Engineer": {"python", "java", "flask", "django", "fastapi", "sql", "rest", "docker"},
+        "Frontend Engineer": {"javascript", "typescript", "react", "vue", "angular", "css", "html"},
+        "DevOps Engineer": {"docker", "kubernetes", "ci/cd", "aws", "azure", "gcp", "terraform", "linux"},
+        "AI/Computer Vision Engineer": {"opencv", "computer vision", "deep learning", "pytorch", "tensorflow", "python"},
+        "Full Stack Engineer": {"react", "node", "python", "sql", "rest", "docker", "javascript"},
+        "Data Engineer": {"spark", "hadoop", "airflow", "sql", "python", "kafka", "aws"},
+    }
+    kw_lower = {k.lower() for k in resume_keywords}
+    role_scores = {}
+    for role, required in ROLE_PROFILES.items():
+        matched = required & kw_lower
+        role_scores[role] = round(len(matched) / len(required) * 100, 1)
+    sorted_roles = sorted(role_scores.items(), key=lambda x: x[1], reverse=True)
+    best_fit_roles = [r for r, s in sorted_roles if s >= 30][:3]
     return {
-        "role_scores": scores,
-        "best_fit_roles": best_roles,
-        "top_score": sorted_roles[0][1] if sorted_roles else 0,
+        "role_scores": role_scores,
+        "best_fit_roles": best_fit_roles,
+        "top_score": sorted_roles[0][1] if sorted_roles else 0
     }
 
 
-def generate_smart_feedback(missing_keywords: list, match_score: float,
-                            role_fit: dict, breakdown: dict) -> list:
-    """
-    Recruiter-style smart feedback instead of generic suggestions.
-    """
+def generate_smart_feedback(missing: list, match_score: float,
+                             role_fit: dict, breakdown: dict) -> list:
     feedback = []
-    missing_set = set(missing_keywords)
-
-    # ── Overall verdict ────────────────────────────────────────────────
-    if match_score >= 85:
-        feedback.append({"type": "success", "text":
-            "Excellent match! Your resume aligns very well with this role."})
-    elif match_score >= 70:
-        feedback.append({"type": "success", "text":
-            "Strong match! A few targeted additions could make you a top candidate."})
-    elif match_score >= 50:
-        feedback.append({"type": "warning", "text":
-            "Moderate match. Your core skills align but some key areas need strengthening."})
+    if match_score < 40:
+        feedback.append({"type": "error", "text": "Low match. Your profile and this role have significant skill gaps."})
+    elif match_score < 65:
+        feedback.append({"type": "warning", "text": "Moderate match. Targeted improvements could make you competitive."})
     else:
-        feedback.append({"type": "error", "text":
-            "Low match. Your profile and this role have significant skill gaps."})
-
-    # ── Section-specific insight ────────────────────────────────────────
-    if breakdown.get("skills", 0) < 60:
-        feedback.append({"type": "error", "text":
-            f"Your Skills section only covers {breakdown['skills']}% of required skills. "
-            "Add the missing technologies explicitly in a Technical Skills section."})
-
-    if breakdown.get("projects", 0) < 50:
-        feedback.append({"type": "warning", "text":
-            f"Projects show {breakdown['projects']}% alignment with the role. "
-            "Highlight projects that directly use the required tools and technologies."})
-
-    # ── Domain mismatch detection ───────────────────────────────────────
-    devops_missing = missing_set & {"docker", "kubernetes", "ci/cd", "jenkins", "terraform"}
-    cloud_missing = missing_set & {"aws", "azure", "gcp", "google cloud"}
-    ml_missing = missing_set & {"machine learning", "deep learning", "tensorflow", "pytorch"}
-    web_missing = missing_set & {"react", "angular", "vue", "node", "graphql"}
-
-    if len(devops_missing) >= 3:
-        feedback.append({"type": "error", "text":
-            f"Missing core infrastructure skills: {', '.join(sorted(devops_missing))}. "
-            "This role has a strong DevOps requirement your resume doesn't address."})
-    elif devops_missing:
-        feedback.append({"type": "warning", "text":
-            f"Missing some DevOps tools: {', '.join(sorted(devops_missing))}. "
-            "Add any containerization or deployment experience you have."})
-
-    if cloud_missing:
-        feedback.append({"type": "warning", "text":
-            f"No cloud platform experience mentioned ({', '.join(sorted(cloud_missing))}). "
-            "Even free-tier or personal project deployments count — add them."})
-
-    if ml_missing:
-        feedback.append({"type": "error", "text":
-            f"Missing ML/AI fundamentals the JD requires: {', '.join(sorted(ml_missing))}."})
-
-    if web_missing:
-        feedback.append({"type": "warning", "text":
-            f"Missing frontend/web technologies: {', '.join(sorted(web_missing))}."})
-
-    # ── Role fit insight ────────────────────────────────────────────────
-    best_roles = role_fit.get("best_fit_roles", [])
-    if best_roles:
-        feedback.append({"type": "info", "text":
-            f"Your resume is best suited for: {', '.join(best_roles)}."})
-
-    # ── Missing keyword summary ────────────────────────────────────────
-    if missing_keywords:
-        top = missing_keywords[:5]
-        feedback.append({"type": "warning", "text":
-            f"Top missing keywords to add: {', '.join(top)}."})
-
-    # ── ATS tip ────────────────────────────────────────────────────────
-    if match_score < 80:
-        feedback.append({"type": "info", "text":
-            "Mirror the job description's exact phrasing in your bullet points — "
-            "ATS systems match phrases, not just concepts."})
-
-    feedback.append({"type": "info", "text":
-        "Quantify your achievements: accuracy %, latency improvements, team size, "
-        "dataset sizes. Numbers dramatically boost ATS and recruiter scores."})
-
+        feedback.append({"type": "success", "text": "Strong match! Your profile aligns well with this role."})
+    if missing:
+        feedback.append({"type": "tip", "text": f"Add these missing keywords: {', '.join(missing[:5])}."})
+    weakest = min(breakdown, key=breakdown.get)
+    feedback.append({"type": "tip", "text": f"Your weakest area is '{weakest}' ({breakdown[weakest]}%). Focus on strengthening this section."})
+    if role_fit.get("best_fit_roles"):
+        feedback.append({"type": "info", "text": f"Best suited for: {', '.join(role_fit['best_fit_roles'])}."})
     return feedback
-
-
-def compute_match_score(resume_text, job_description, resume_keywords, jd_keywords):
-    """Legacy single-score function (used as fallback)."""
-    if jd_keywords:
-        matched = get_matched_keywords(resume_keywords, jd_keywords)
-        keyword_score = len(matched) / len(jd_keywords)
-    else:
-        keyword_score = 0.0
-    try:
-        vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2),
-                                     max_features=8000, sublinear_tf=True)
-        tfidf_matrix = vectorizer.fit_transform([resume_text, job_description])
-        tfidf_score = float(cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0])
-    except Exception:
-        tfidf_score = 0.0
-    return round(min((keyword_score * 0.80 + tfidf_score * 0.20) * 100, 100.0), 1)
-
-
-def generate_suggestions(missing_keywords, match_score):
-    """Legacy plain-text suggestions (kept for compatibility)."""
-    return [f["text"] for f in generate_smart_feedback(missing_keywords, match_score, {}, {})]
