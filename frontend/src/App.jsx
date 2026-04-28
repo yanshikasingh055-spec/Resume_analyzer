@@ -53,28 +53,28 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <header className="header">
-        <div className="header-inner">
-          <div className="logo">
-            <span className="logo-icon">📄</span>
-            <span className="logo-text">ResumeMatch</span>
+  <div className="app">
+    {!results ? (
+      <>
+        <header className="header">
+          <div className="header-inner">
+            <div className="logo">
+              <span className="logo-icon">📄</span>
+              <span className="logo-text">ResumeMatch</span>
+            </div>
+            <p className="tagline">Know your match before you apply</p>
           </div>
-          <p className="tagline">Know your match before you apply</p>
-        </div>
-      </header>
-
-      <main className="main">
-        {!results ? (
+        </header>
+        <main className="main">
           <UploadPanel onAnalyze={handleAnalyze} loading={loading} error={error} />
-        ) : (
-          <ResultsDashboard results={results} onReset={handleReset} />
-        )}
-      </main>
-
-      <footer className="footer">
-        <p>Built with Python · Flask · spaCy · React</p>
-      </footer>
-    </div>
-  );
+        </main>
+        <footer className="footer">
+          <p>Built with Python · Flask · spaCy · React</p>
+        </footer>
+      </>
+    ) : (
+      <ResultsDashboard results={results} onReset={handleReset} />
+    )}
+  </div>
+);
 }
