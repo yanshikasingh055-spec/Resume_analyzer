@@ -37,7 +37,7 @@ Most job seekers apply without knowing if their resume even passes ATS (Applican
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/YOUR_USERNAME/resume-analyzer.git
+git clone https://github.com/yanshikasingh055-spec/Resume_analyzer
 cd resume-analyzer
 ```
 
@@ -136,3 +136,5 @@ MIT — free to use, fork, and build on.
 ---
 
 Built by **Yanshika Singh** · [LinkedIn](https://linkedin.com/in/yanshika-singh05)
+
+
