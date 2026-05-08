@@ -30,8 +30,11 @@ def analyze():
 
         # Step 1: Extract text
         resume_text = extract_text_from_pdf(resume_file)
+        print("=== RESUME TEXT SAMPLE ===")
+        print(repr(resume_text[:500]))
+        print("=== END SAMPLE ===")
         if not resume_text:
-            return jsonify({"error": "Could not extract text from PDF. Is it a scanned image?"}), 400
+           return jsonify({"error": "Could not extract text from PDF. Is it a scanned image?"}), 400
 
         # Step 2: Extract keywords — full resume + per-section
         resume_keywords = extract_keywords(resume_text)
