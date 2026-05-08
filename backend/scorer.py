@@ -1,3 +1,4 @@
+print("NEW SCORER LOADED ✅")
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -13,7 +14,7 @@ SKILLS_KEYWORDS = {
     "mysql", "redis", "spark", "hadoop", "airflow", "tableau", "power bi",
     "data analysis", "feature engineering", "version control", "statistics",
     "natural language processing", "opencv", "yolo", "cnn", "regression",
-    "classification", "supervised learning", "model evaluation"
+    "classification", "supervised learning", "model evaluation", "data visualization"
 }
 
 TOOLS_KEYWORDS = {
@@ -26,7 +27,7 @@ TOOLS_KEYWORDS = {
     "tensorflow", "pytorch", "scikit-learn", "mysql", "mongodb"
 }
 
-# ── FIX 1: Expanded noise list to remove junk words that leak into denominator ──
+# Words that appear in JDs but never in resumes — exclude from matching
 JD_NOISE_WORDS = {
     # Job posting boilerplate
     "description", "eligibility", "familiarity", "exposure", "developer",
@@ -40,10 +41,10 @@ JD_NOISE_WORDS = {
     "india", "location", "cloud", "database", "databases", "control",
     "looking", "seeking", "profile", "portfolio", "track", "record",
     "contribute", "contribution", "day", "one", "real", "world", "year",
-    "years", "hands", "growing", "why", "fit", "great", "plus",
-    "understanding", "awareness", "grasp",
+    "years", "hands", "growing", "ai", "why", "fit", "great", "plus",
+    "understanding", "familiarity", "awareness", "exposure", "grasp",
     "proficiency", "proficient", "expert", "expertise", "senior", "junior",
-    "lead", "manage", "coordinate", "implement", "maintain",
+    "lead", "manage", "coordinate", "implement", "implement", "maintain",
     # Generic English
     "and", "or", "the", "a", "an", "in", "of", "for", "to", "with",
     "is", "are", "be", "on", "at", "by", "as", "we", "you", "your",
@@ -57,32 +58,48 @@ JD_NOISE_WORDS = {
     "across", "between", "among", "above", "below", "over", "under",
     "more", "less", "most", "least", "very", "too", "just", "only",
     "both", "each", "every", "any", "all", "few", "some", "other",
-    "these", "those", "same", "different", "various", "multiple",
-    "frameworks", "frontend", "graduate",
-    "hands-on", "integration", "intermediate", "final",
-    "full-stack", "full stack", "passion",
-    "stack", "tech", "technology", "technologies",
-    "solution", "solutions", "service", "services",
+    "these", "those", "same", "different", "various", "multiple",# Add these to your existing JD_NOISE_WORDS set:
+    "description", "eligibility", "familiarity", "exposure", "developers",
+    "developing", "entry-level", "frameworks", "frontend", "graduate",
+    "hands-on", "integration", "intermediate", "final", "fresher", "freshers",
+    "computer", "field", "engineer", "accuracy", "detection", "experience",
+    "assistive", "data", "full-stack", "full stack", "knowledge", "passion",
+    "passionate", "grow", "growing", "stack", "tech", "technology",
+    "technologies", "solution", "solutions", "service", "services",
     "performance", "model", "models", "application", "system", "systems",
-    # ── NEW: words confirmed to leak into denominator without being skills ──
-    "community", "equivalent", "hybrid", "leadership", "motivated",
-    "nice", "tasks", "tools", "education", "certifications",
-    "programming", "development", "develop", "science", "project",
-    "learning", "generative", "prediction", "evaluation", "healthcare",
-    "restful", "hackathon", "hands", "assistive", "computer",
-    # Hyphenated noise variants
-    "cnn-based", "full-stack", "hands-on",
-    # Slash-separated combos that aren't real terms
-    "ml/ai", "0-1",
-    # ── Newly confirmed junk terms that leak into denominator ──
-    "fundamentals", "hiring", "modules", "evaluate", "train", "training",
-    "integrate", "queries", "strong", "backend", "fresher",
-    "responsibilities", "frameworks", "database", "based",
-    "title", "write", "optimized", "good", "years",
+    # Action verbs and generic job-posting words (not skills)
+    "deploy", "deployments", "develop", "integrate", "optimize", "implement",
+    "pipelines", "pipeline", "production", "product", "tasks", "task",
+    "recent", "final-year", "real-world", "portfolio", "projects",
+    "proficiency", "familiarity", "strong", "hands", "powered",
+    "backend", "scalable", "scalability", "nutrition", "healthcare"
+    # Generic English words that sneak through
+"best", "code", "concepts", "continuously", "contributing", "academic",
+"agile", "analytical", "basics", "learning", "practices", "oriented",
+"detail", "motivated", "modern", "similar", "strong", "good", "basic",
+"recent", "quality", "issues", "process", "processes", "oriented",
+"object", "scalable", "responsive", "server", "side", "logic",
+"review", "reviews", "participate", "improve", "maintain", "test",
+"debug", "optimize", "performance", "foundation", "programming",
+"problem", "solving", "building", "contribute", "real", "world",
+"tools", "new", "frameworks", "practices", "continuously", "learn",
+"knowledge", "understanding", "familiarity", "experience", "ability",
+"best", "communication", "detail-oriented", "development", "engineering",
+"front-end", "full", "stack", "oriented", "motivated", "passionate",
+"scalable", "modern", "responsive", "server", "side", "logic",
+"review", "reviews", "participate", "improve", "maintain", "test",
+"debug", "optimize", "performance", "foundation", "programming",
+"problem", "solving", "analytical", "agile", "academic", "concepts",
+"continuously", "contributing", "basics", "code", "object", "oriented",
+"structures", "algorithms", "cybersecurity", "familiarity", "graduate",
+"internship", "cloud", "plus", "similar", "languages", "processes",
+"quality", "issues", "tools", "frameworks", "practices", "knowledge",
+"understanding", "ability", "learn", "apply", "detail", "oriented"
 }
 
 # Explicit tech terms that MUST be checked — always included regardless
 MUST_MATCH_TERMS = {
+    
     "python", "flask", "fastapi", "django", "react", "mysql", "sql",
     "tensorflow", "opencv", "yolo", "cnn", "machine_learning",
     "deep_learning", "computer_vision", "rest_api", "github", "aws",
@@ -90,59 +107,90 @@ MUST_MATCH_TERMS = {
     "pandas", "scikit-learn", "pytorch", "git", "javascript", "node",
     "docker", "kubernetes", "nlp", "data_analysis", "version_control",
     "object_detection"
+
 }
 
 
 def normalize(text: str) -> str:
     """Lowercase and normalize common variants."""
     text = text.lower()
-    # Strip "-based" suffix FIRST so "opencv-based" does not become "computer_vision-based"
-    text = re.sub(r'(\w+)-based\b', r'\1 based', text)
+    # Expand common abbreviations BEFORE tokenizing
+    text = re.sub(r'\bml\b', 'machine_learning', text)
+    text = re.sub(r'\bcv\b', 'computer_vision', text)
     text = re.sub(r'\bcnns?\b', 'cnn', text)
-    text = re.sub(r'\bapis?\b', 'api', text)
-    text = re.sub(r'\brest\s+apis?\b', 'rest_api', text)
     text = re.sub(r'\byolov\d+\b', 'yolo', text)
     text = re.sub(r'\breact\.?js\b', 'react', text)
     text = re.sub(r'\bnode\.?js\b', 'node', text)
     text = re.sub(r'\bgithub\b', 'git github', text)
-    text = re.sub(r'\bfull[-\s]stack\b', 'fullstack', text)
-    text = re.sub(r'\bhands[-\s]on\b', 'handson', text)
+    # Normalize multi-word phrases BEFORE stripping punctuation
     text = re.sub(r'computer\s+vision', 'computer_vision', text)
     text = re.sub(r'machine\s+learning', 'machine_learning', text)
     text = re.sub(r'deep\s+learning', 'deep_learning', text)
     text = re.sub(r'natural\s+language\s+processing', 'nlp', text)
     text = re.sub(r'version\s+control', 'version_control', text)
-    text = re.sub(r'rest\s+api', 'rest_api', text)
-    text = re.sub(r'restful\s+apis?\b', 'rest_api', text)
-    text = re.sub(r'data\s+analysis', 'data_analysis', text)
     text = re.sub(r'object\s+detection', 'object_detection', text)
-    text = re.sub(r'\bopencv\b', 'opencv computer_vision', text)
-    text = re.sub(r'\bpipelines?\b', 'pipelines', text)
+    text = re.sub(r'data\s+analysis', 'data_analysis', text)
+    # Normalize REST API variants (must happen before stripping punctuation)
+    text = re.sub(r'restful\s+apis?', 'rest_api', text)
+    text = re.sub(r'rest\s+apis?', 'rest_api', text)
+    text = re.sub(r'\bapis?\b', 'api', text)
+    # Normalize compound JD tokens that never appear in resumes
+    text = re.sub(r'tensorflow/opencv[^\s]*', 'tensorflow opencv', text)
+    text = re.sub(r'web/backend', 'web backend', text)
     text = re.sub(r'[^\w\s/\-\+#]', ' ', text)
     return text
 
 
 def extract_section(text: str, section_names: list) -> str:
     text_lower = text.lower()
+
+    # Sort by length descending so multi-word phrases match before single words
+    sorted_names = sorted(section_names, key=len, reverse=True)
+
     best_start = -1
-    for name in section_names:
-        idx = text_lower.find(name)
-        if idx != -1 and (best_start == -1 or idx < best_start):
-            best_start = idx
+    matched_name = ""
+    for name in sorted_names:
+        idx = 0
+        while True:
+            idx = text_lower.find(name, idx)
+            if idx == -1:
+                break
+            # Only accept if at start of line (preceded by newline or start of string)
+            preceding = text_lower[max(0, idx - 2):idx]
+            if preceding.strip() == "" or preceding.endswith("\n"):
+                if best_start == -1 or idx < best_start:
+                    best_start = idx
+                    matched_name = name
+                break
+            idx += 1
+
     if best_start == -1:
         return ""
+
+    # Only match next section headers at the START of a line
     section_headers = [
         "education", "experience", "work experience", "projects", "skills",
-        "certifications", "publications", "awards", "summary", "objective",
-        "interests", "languages", "references", "achievements", "extra"
+        "technical skills", "certifications", "publications", "awards",
+        "summary", "objective", "interests", "references",
+        "achievements", "extra", "extra-curricular", "professional summary"
     ]
     end = len(text)
+    search_start = best_start + len(matched_name) + 5
     for header in section_headers:
-        idx = text_lower.find(header, best_start + 10)
-        if idx != -1 and idx < end:
-            found_name = any(name in text_lower[best_start:best_start+30] for name in section_names)
-            if found_name or idx > best_start + 50:
-                end = idx
+        if header == matched_name:
+            continue
+        idx = search_start
+        while True:
+            idx = text_lower.find(header, idx)
+            if idx == -1:
+                break
+            # Only treat as section boundary if at start of line
+            preceding = text_lower[max(0, idx - 2):idx]
+            if preceding.strip() == "" or preceding.endswith("\n"):
+                if idx < end:
+                    end = idx
+                break
+            idx += 1
     return text[best_start:end]
 
 
@@ -185,12 +233,10 @@ def direct_match_score(resume_text: str, jd_text: str, label: str = "") -> float
         if term in jd_n:
             candidates.add(term)
 
-    # ── FIX 3: Remove words already in noise that sneak in via MUST_MATCH ──
-    candidates = {w for w in candidates if w not in JD_NOISE_WORDS}
-
     # Step 3: remove words that are clearly not tech terms
+    # (heuristic: all-alpha words under 4 chars that aren't known tech)
     known_short_tech = {"sql", "aws", "gcp", "git", "api", "cnn", "nlp",
-                        "css", "vue", "r", "go", "c++", "c#", "html"}
+                        "css", "vue", "r", "go", "c++", "c#"}
     final_terms = set()
     for w in candidates:
         if w in known_short_tech or w in MUST_MATCH_TERMS:
@@ -211,63 +257,61 @@ def direct_match_score(resume_text: str, jd_text: str, label: str = "") -> float
 
 
 def compute_scores(resume_text: str, jd_text: str) -> dict:
-    """
-    KEY DESIGN PRINCIPLE:
-    - direct_match_score ALWAYS uses full resume text — a skill listed in the
-      Skills section shouldn't penalize the Projects score just because it
-      wasn't repeated inside the project bullet points.
-    - Section text is ONLY used for TF-IDF (relevance/context signal).
-    - keyword_overlap always uses full resume.
-    This ensures: 0 missing keywords → score reflects that reality.
-    """
-
-    # Extract sections for TF-IDF context only
-    skills_section   = extract_section(resume_text, ["skills", "technical skills", "core competencies"])
-    projects_section = extract_section(resume_text, ["projects", "personal projects", "academic projects"])
-    exp_section      = extract_section(resume_text, [
-        "experience", "work experience", "employment",
-        "internship", "professional experience"
-    ])
-
     # ── Skills Score (40%) ──────────────────────────────────────────────────
-    skills_kw    = keyword_overlap_score(resume_text, jd_text, SKILLS_KEYWORDS)
-    skills_dir   = direct_match_score(resume_text, jd_text, "SKILLS")        # full resume
-    skills_tfidf = tfidf_similarity(
-        skills_section if len(skills_section) > 50 else resume_text, jd_text
-    )
+    skills_section = extract_section(resume_text, ["technical skills", "core competencies", "skills"])
+    skills_text = skills_section if len(skills_section) > 50 else resume_text
+    skills_kw   = keyword_overlap_score(resume_text, jd_text, SKILLS_KEYWORDS)
+    skills_dir  = direct_match_score(skills_text, jd_text, "SKILLS")
+    skills_tfidf = tfidf_similarity(skills_text, jd_text)
     skills_score = round(0.45 * skills_kw + 0.35 * skills_dir + 0.20 * skills_tfidf, 1)
 
     # ── Projects Score (30%) ────────────────────────────────────────────────
-    proj_kw    = keyword_overlap_score(resume_text, jd_text, SKILLS_KEYWORDS) # full resume
-    proj_dir   = direct_match_score(resume_text, jd_text, "PROJECTS")         # full resume
-    proj_tfidf = tfidf_similarity(
-        projects_section if len(projects_section) > 50 else resume_text, jd_text
-    )
-    projects_score = round(0.45 * proj_kw + 0.35 * proj_dir + 0.20 * proj_tfidf, 1)
+    projects_section = extract_section(resume_text, ["projects", "personal projects", "academic projects"])
+    if len(projects_section) > 50:
+    # Use full resume for keyword overlap (skills apply across whole resume)
+    # Use only projects section for direct/tfidf match
+       proj_kw    = keyword_overlap_score(resume_text, jd_text, SKILLS_KEYWORDS)
+       proj_dir   = direct_match_score(projects_section, jd_text, "PROJECTS")
+       proj_tfidf = tfidf_similarity(projects_section, jd_text)
+       projects_score = round(0.45 * proj_kw + 0.35 * proj_dir + 0.20 * proj_tfidf, 1)
+    else:
+        projects_score = 0.0
 
     # ── Tools Score (20%) ───────────────────────────────────────────────────
-    tools_kw    = keyword_overlap_score(resume_text, jd_text, TOOLS_KEYWORDS) # full resume
-    tools_dir   = direct_match_score(resume_text, jd_text, "TOOLS")           # full resume
-    tools_tfidf = tfidf_similarity(resume_text, jd_text)
+    # Prefer full technical skills section (has all tools) over narrow "Tools & Cloud" subsection
+    tools_section = extract_section(resume_text, ["tools", "technologies", "tech stack"])
+    # If tools section is a subsection (< 200 chars), use the full skills section instead
+    # since "Tools & Cloud: GitHub, AWS" alone misses all the ML/framework tools
+    if len(tools_section) < 200 and len(skills_section) > 50:
+        tools_text = skills_section
+    elif len(tools_section) > 50:
+        tools_text = tools_section
+    else:
+        tools_text = resume_text
+    tools_kw   = keyword_overlap_score(resume_text, jd_text, TOOLS_KEYWORDS)
+    tools_dir  = direct_match_score(tools_text, jd_text, "TOOLS")
+    tools_tfidf = tfidf_similarity(tools_text, jd_text)
     tools_score = round(0.50 * tools_kw + 0.30 * tools_dir + 0.20 * tools_tfidf, 1)
 
     # ── Experience Score (10%) ──────────────────────────────────────────────
-    # For freshers: projects section IS experience — use it for TF-IDF context
-    exp_context = (
-        exp_section if len(exp_section) > 50
-        else projects_section if len(projects_section) > 50
-        else resume_text
+    exp_section = extract_section(resume_text, [
+        "work experience", "employment",
+        "internship", "professional experience"
+    ])
+    # For freshers with no work experience, fall back to projects (NOT summary)
+    exp_text = exp_section if len(exp_section) > 50 else (
+        projects_section if len(projects_section) > 50 else resume_text[-1000:]
     )
-    exp_dir   = direct_match_score(resume_text, jd_text, "EXPERIENCE")       # full resume
-    exp_tfidf = tfidf_similarity(exp_context, jd_text)
+    exp_dir   = direct_match_score(exp_text, jd_text, "EXPERIENCE")
+    exp_tfidf = tfidf_similarity(exp_text, jd_text)
     experience_score = round(0.55 * exp_dir + 0.45 * exp_tfidf, 1)
 
     # ── Overall ─────────────────────────────────────────────────────────────
     overall = round(
         0.40 * skills_score   +
-        0.30 * projects_score +
+        0.35 * projects_score +
         0.20 * tools_score    +
-        0.10 * experience_score,
+        0.05 * experience_score,
         1
     )
 
