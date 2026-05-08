@@ -34,4 +34,7 @@ def clean_text(text):
     text = re.sub(r'\n{3,}', '\n\n', text)
     # Remove non-printable characters
     text = re.sub(r'[^\x20-\x7E\n]', ' ', text)
+    # Fix PyPDF2 broken hyphens: "full -stack" -> "full-stack"
+    text = re.sub(r'\s+-\s*', '-', text)
+    text = re.sub(r'\s*-\s+', '-', text)
     return text.strip()
