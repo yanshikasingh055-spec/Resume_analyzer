@@ -114,6 +114,7 @@ export default function ResultsDashboard({ results, onReset }) {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap');
         .rm-root * { box-sizing: border-box; }
+        .rm-root { overflow-x: hidden; }
         .rm-chip { transition: transform 0.1s; cursor: default; }
         .rm-chip:hover { transform: scale(1.04); }
         .rm-role { transition: border-color 0.15s, box-shadow 0.15s; }
@@ -127,35 +128,41 @@ export default function ResultsDashboard({ results, onReset }) {
           .rm-bot-grid  { grid-template-columns: 1fr !important; }
           .rm-role-grid { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 640px) {
+          .rm-page-inner { padding: 1rem 1rem 2rem !important; }
+          .rm-card { padding: 1rem !important; }
+          .rm-nav-tagline { display: none !important; }
+          .rm-nav-divider { display: none !important; }
+        }
       `}</style>
 
       <div className="rm-root" style={{ fontFamily: "'DM Sans',sans-serif", background: "#F4F3EF", minHeight: "100vh", color: "#1A1917" }}>
 
         {/* NAV */}
-        <nav style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.08)", padding: "0 2rem", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 28, height: 28, background: "#4338CA", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <rect x="2" y="2" width="7" height="9" rx="1.5" stroke="white" strokeWidth="1.4"/>
-                  <path d="M4.5 6h4M4.5 8h2.5" stroke="white" strokeWidth="1.2" strokeLinecap="round"/>
-                  <circle cx="11.5" cy="11.5" r="2.5" stroke="white" strokeWidth="1.3"/>
-                  <path d="M13.5 13.5L15 15" stroke="white" strokeWidth="1.3" strokeLinecap="round"/>
-                </svg>
-              </div>
-              <span style={{ fontSize: 17, fontWeight: 600, color: "#4338CA" }}>ResumeMatch</span>
+        <nav style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.08)", padding: "0 1rem", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, overflow: "hidden" }}>
+            <div style={{ width: 28, height: 28, background: "#4338CA", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="2" width="7" height="9" rx="1.5" stroke="white" strokeWidth="1.4"/>
+                <path d="M4.5 6h4M4.5 8h2.5" stroke="white" strokeWidth="1.2" strokeLinecap="round"/>
+                <circle cx="11.5" cy="11.5" r="2.5" stroke="white" strokeWidth="1.3"/>
+                <path d="M13.5 13.5L15 15" stroke="white" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
             </div>
-            <div style={{ width: 1, height: 20, background: "rgba(0,0,0,0.14)" }} />
-            <span style={{ fontSize: 13, color: "#A09D96" }}>Know your match before you apply</span>
+            <span style={{ fontSize: 17, fontWeight: 600, color: "#4338CA", flexShrink: 0 }}>ResumeMatch</span>
+            <div className="rm-nav-divider" style={{ width: 1, height: 20, background: "rgba(0,0,0,0.14)", flexShrink: 0 }} />
+            <span className="rm-nav-tagline" style={{ fontSize: 13, color: "#A09D96", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              Know your match before you apply
+            </span>
           </div>
           <button className="rm-back" onClick={onReset}
-            style={{ fontSize: 13, fontWeight: 500, color: "#6B6860", background: "transparent", border: "1px solid rgba(0,0,0,0.14)", borderRadius: 99, padding: "6px 16px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", transition: "background 0.15s" }}>
+            style={{ fontSize: 13, fontWeight: 500, color: "#6B6860", background: "transparent", border: "1px solid rgba(0,0,0,0.14)", borderRadius: 99, padding: "6px 16px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", transition: "background 0.15s", flexShrink: 0, marginLeft: 12 }}>
             ← Analyze another
           </button>
         </nav>
 
         {/* PAGE */}
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "2rem 1.5rem 3rem" }}>
+        <div className="rm-page-inner" style={{ maxWidth: 1080, margin: "0 auto", padding: "2rem 1.5rem 3rem" }}>
 
           <div style={{ marginBottom: "1.75rem" }}>
             <h1 style={{ fontSize: 26, fontWeight: 600, marginBottom: 4 }}>Analysis complete</h1>
@@ -214,7 +221,7 @@ export default function ResultsDashboard({ results, onReset }) {
             {/* KEYWORD CARD */}
             <div className="rm-card" style={{ ...S.card, animationDelay: "0.12s" }}>
               <div style={S.cardLabel}>Keyword analysis</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: "1.25rem", flexWrap: "wrap" }}>
                 {tabs.map(tab => (
                   <button key={tab.key} className="rm-tab" onClick={() => setActiveTab(tab.key)}
                     style={{
