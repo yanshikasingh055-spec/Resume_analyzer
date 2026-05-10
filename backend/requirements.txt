@@ -1,3 +1,4 @@
+# updated 2026-05-10
 flask==3.0.3
 PyPDF2==3.0.1
 spacy==3.7.5
