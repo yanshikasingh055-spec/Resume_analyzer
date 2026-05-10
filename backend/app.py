@@ -1,8 +1,7 @@
-
 import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from parser import extract_text_from_pdf
+from pdf_parser import extract_text_from_pdf
 from extractor import extract_keywords, extract_section_keywords
 from scorer import (compute_weighted_score, compute_role_fit,
                     get_matched_keywords, get_missing_keywords,
@@ -15,7 +14,7 @@ CORS(app)  # Allow all origins for development
 def home():
     return jsonify({"message": "Resume Analyzer API is running!"})
 
-@app.route("/analyze", methods=["POST"])
+@app.route("/analyze", methods=["POST"])  is there any problem if we keep it as it is
 def analyze():
     try:
         if "resume" not in request.files:
