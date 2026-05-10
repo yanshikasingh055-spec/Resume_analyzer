@@ -14,7 +14,7 @@ CORS(app)  # Allow all origins for development
 def home():
     return jsonify({"message": "Resume Analyzer API is running!"})
 
-@app.route("/analyze", methods=["POST"])  is there any problem if we keep it as it is
+@app.route("/analyze", methods=["POST"])  
 def analyze():
     try:
         if "resume" not in request.files:
