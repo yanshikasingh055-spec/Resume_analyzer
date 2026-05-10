@@ -2,7 +2,7 @@ import spacy
 import re
 
 try:
-    nlp = spacy.load("en_core_web_md")
+    nlp = spacy.load("en_core_web_sm")
     HAS_VECTORS = True
 except OSError:
     try:
