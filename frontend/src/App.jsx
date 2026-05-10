@@ -16,7 +16,7 @@ export default function App() {
       const formData = new FormData();
       formData.append("resume", resumeFile);
       formData.append("job_description", jobDescription);
-      const response = await fetch("/analyze", { method: "POST", body: formData });
+      const response = await fetch("https://resumematch-backend.onrender.com/analyze", { method: "POST", body: formData });
       let data;
       try { data = await response.json(); }
       catch { throw new Error("Server returned an invalid response."); }
