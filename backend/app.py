@@ -8,7 +8,7 @@ from scorer import (compute_weighted_score, compute_role_fit,
                     generate_smart_feedback)
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins for development
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route("/", methods=["GET"])
 def home():
